@@ -78,4 +78,33 @@ public class Vec2L
         var p = (Vec2L)obj;
         return X == p.X && Y == p.Y;
     }
+
+    public Vec2L[] GetNeighbors()
+    {
+        return new[]
+        {
+            Move(1, 0),
+            Move(-1, 0),
+            Move(0, 1),
+            Move(0, -1)
+        };
+    }
+
+    public override int GetHashCode()
+    {
+        return HashCode.Combine(X, Y);
+    }
+
+    public Direction GetDirectionTo(Vec2L neighbor)
+    {
+        var diff = Difference(neighbor);
+        return diff switch
+        {
+            { X: 0, Y: -1 } => Direction.UP,
+            { X: 0, Y: 1 } => Direction.DOWN,
+            { X: -1, Y: 0 } => Direction.LEFT,
+            { X: 1, Y: 0 } => Direction.RIGHT,
+            _ => throw new ArgumentOutOfRangeException(nameof(neighbor), neighbor, null)
+        };
+    }
 }
