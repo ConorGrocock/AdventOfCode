@@ -7,3 +7,4 @@ input-real.txt
 .idea/
 .run/
 *.user
+.DS_Store

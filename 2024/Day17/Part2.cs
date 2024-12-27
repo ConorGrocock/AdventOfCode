@@ -1,12 +1,13 @@
 ﻿using System.Numerics;
+using System.Text;
 using System.Text.RegularExpressions;
 using SharedUtils;
 
 namespace Day9;
 
-public class Part2 : ISolution
+public partial class Part2 : ISolution
 {
-    public RenderMode RenderMode = RenderMode.STEP_THROUGH;
+    private static RenderMode _renderMode = RenderMode.STEP_THROUGH;
 
     public string Sample()
     {
@@ -15,250 +16,172 @@ public class Part2 : ISolution
 
     public string Real()
     {
-        RenderMode = RenderMode.DISABLED;
+        _renderMode = RenderMode.DISABLED;
         return Custom("real");
     }
 
     public string Custom(string fileName)
     {
+        Console.Clear();
         var fileInput = Input.TestInput(fileName);
         return Answer(fileInput);
     }
 
+    private List<short> instructions;
+
     private string Answer(string[] input)
     {
-        var (grid, directions) = ParseInput(input);
+        ParseInput(out var registers, out instructions, input);
 
-        var cursor = new Point(0, 1);
-        grid.Render(RenderMode, cursor, directions.ToArray());
+        return DepthSearch(0, 0).Min().ToString();
+    }
 
-        while (directions.TryDequeue(out var direction))
+    private List<long> DepthSearch(long curVal, int depth)
+    {
+        List<long> results = [];
+        if (depth > instructions.Count) return results;
+        var tmp = curVal << 3;
+        for(var i = 0; i < 8; i++)
         {
-            grid.MakeMove(direction);
-            grid.Render(RenderMode, cursor, directions.ToArray());
+            var runResult = RunProgram(tmp + i);
+            if (!runResult.SequenceEqual<short>(instructions.TakeLast(depth + 1))) continue;
+
+            if (depth + 1 == instructions.Count) results.Add(tmp + i);
+            results.AddRange(DepthSearch(tmp + i, depth + 1));
         }
 
-        return grid.CalculateGps().ToString();
+        return results;
     }
 
-    private static (Grid, Queue<Direction>) ParseInput(string[] input)
+    private List<short> RunProgram(BigInteger registerA)
     {
-        var gridInput = input.TakeWhile(l => !string.IsNullOrWhiteSpace(l)).ToArray();
-        var grid = new Grid(gridInput);
+        var registers = new[] { registerA, 0, 0 };
 
-        var instructions = input.Skip(gridInput.Length + 1).ToArray();
-        var directionStack = ParseDirection(instructions);
-
-        return (grid, directionStack);
-    }
-
-    private static Queue<Direction> ParseDirection(string[] input)
-    {
-        var directions = new List<Direction>();
-        foreach (var line in input)
+        var instructionPointer = 0;
+        var output = new List<short>();
+        while (instructionPointer < instructions.Count)
         {
-            directions.AddRange(line.Select(DirectionExtensions.FromAngledChar));
-        }
+            var instruction = (Operation)instructions[instructionPointer];
+            var literalOperand = instructions[instructionPointer + 1];
+            BigInteger comboOperand = 0;
 
-        return new Queue<Direction>(directions);
-    }
-
-    private class Grid
-    {
-        private readonly int _width;
-        private readonly int _height;
-
-        private readonly Robot _robot;
-        private readonly List<Package> _packages;
-        private readonly List<Vec2L> _walls;
-
-        public Grid(string[] input)
-        {
-            _height = input.Length;
-            _width = input[0].Length * 2;
-
-            _packages = [];
-            _walls = [];
-
-            for (var y = 0; y < input.Length; y++)
+            switch (instruction)
             {
-                for (var x = 0; x < input[0].Length*2; x+=2)
-                {
-                    var gridChar = input[y][x/2];
-                    switch (gridChar)
+                case Operation.ADV:
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
+                    registers[0] /= (BigInteger)Math.Pow(2, (double)comboOperand);
+                    break;
+                case Operation.BXL:
+                    registers[1] ^= literalOperand;
+                    break;
+                case Operation.BST:
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
+                    registers[1] = comboOperand % 8;
+                    break;
+                case Operation.JNZ:
+                    if (registers[0] != 0)
                     {
-                        case '#':
-                            _walls.Add(new Vec2L(x, y));
-                            _walls.Add(new Vec2L(x+1, y));
-                            break;
-                        case '@':
-                            _robot = new Robot(this, new Vec2L(x, y));
-                            break;
-                        case 'O':
-                            _packages.Add(new Package(new Vec2L(x, y), new Vec2L(2,1)));
-                            break;
+                        instructionPointer = literalOperand;
+                        continue;
                     }
-                }
+
+                    break;
+                case Operation.BXC:
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
+                    registers[1] ^= registers[2];
+                    break;
+                case Operation.OUT:
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
+                    output.Add((short)(comboOperand % 8));
+                    break;
+                case Operation.BDV:
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
+                    registers[1] = registers[0] / (BigInteger)Math.Pow(2, (double)comboOperand);
+                    break;
+                case Operation.CDV:
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
+                    registers[2] = registers[0] / (BigInteger)Math.Pow(2, (double)comboOperand);
+                    break;
+                default:
+                    return output;
             }
 
-            if(_robot == null)
-                throw new Exception("No robot found");
-            if(_walls.Count == 0)
-                throw new Exception("No walls found");
-            if(_packages.Count == 0)
-                throw new Exception("No packages found");
+            instructionPointer += 2;
         }
 
-        public bool CanRobotMoveTo(Vec2L position, Direction direction)
-        {
-            if(_walls.Any(p => p.X == position.X && p.Y == position.Y))
-                return false;
-
-            if(_packages.Any(p => p.InsideBoundingBox(position)))
-                return MovePackageTo(position, direction);
-
-            return true;
-        }
-
-        private bool CanMovePackageTo(Package package, Direction direction)
-        {
-            var newPosition = package.GetCheckPosition(package.Position, direction);
-            if(newPosition.Any(p => _walls.Any(w => Equals(w, p))))
-                return false;
-
-            return _packages
-                .Where(p => newPosition.Any(p.InsideBoundingBox))
-                .All(p => CanMovePackageTo(p, direction));
-        }
-
-        private bool MovePackageTo(Vec2L position, Direction direction)
-        {
-            var package = _packages.FirstOrDefault(p => p.InsideBoundingBox(position));
-
-            if(package == null)
-                return true;
-
-            if(!CanMovePackageTo(package, direction))
-                return false;
-
-
-            var newPosition = package.GetCheckPosition(package.Position, direction);
-            var checkPackages = _packages.Where(p => newPosition.Any(p.InsideBoundingBox));
-
-            foreach (var checkPackage in checkPackages)
-            {
-                MovePackageTo(checkPackage.Position, direction);
-            }
-
-            package.Move(direction);
-
-
-            return true;
-        }
-
-        public void MakeMove(Direction direction)
-        {
-            _robot.Move(direction);
-        }
-
-        public long CalculateGps()
-        {
-            return _packages.Sum(p => p.CalculateGps());
-        }
-
-        public void Render(RenderMode mode, Point cursor, Direction[] directions)
-        {
-            if(mode == RenderMode.DISABLED)
-                return;
-
-            Console.SetCursorPosition(cursor.X, cursor.Y);
-            for (var y = 0; y < _height; y++)
-            {
-                for (var x = 0; x < _width; x++)
-                {
-                    var position = new Vec2L(x, y);
-                    var package = _packages.FirstOrDefault(p => p.InsideBoundingBox(position));
-
-                    if(Equals(_robot.Position, position))
-                        Console.Write('@');
-                    else if(package != null)
-                        Console.Write(package.GetChar(position));
-                    else if(_walls.Any(p => Equals(p, position)))
-                        Console.Write('#');
-                    else
-                        Console.Write('.');
-                }
-                Console.WriteLine();
-            }
-
-            var directionString = string.Join("", directions.Select(DirectionExtensions.ToDirectionString).ToArray());
-            Console.WriteLine(directionString + " ");
-
-
-            if(mode == RenderMode.DELAY)
-                Thread.Sleep(100);
-            else if(mode == RenderMode.STEP_THROUGH)
-                Console.ReadKey();
-        }
+        return output;
     }
 
-    private class Robot(Grid grid, Vec2L position)
+    private static StringBuilder AddOutput(StringBuilder output, BigInteger value)
     {
-        public void Move(Direction direction)
-        {
-            var moveVec = direction.ToVec2L();
-            var newPosition = Position.Move(moveVec);
-
-            if(!grid.CanRobotMoveTo(newPosition, direction))
-                return;
-
-            Position = newPosition;
-        }
-
-        public Vec2L Position { get; private set; } = position;
+        if(output.Length > 0)
+            output.Append(',');
+        output.Append(value);
+        return output;
     }
 
-    private class Package(Vec2L position, Vec2L size)
+    private static BigInteger GetOperationInput(Operation operation, List<short> instructions, int instructionPointer, BigInteger[] registers)
     {
-        public void Move(Direction direction)
-        {
-            Position = Position.Move(direction.ToVec2L());
-        }
+        var operationInput = 7;
+        if(instructionPointer + 1 < instructions.Count)
+            operationInput = instructions[instructionPointer + 1];
 
-        public long CalculateGps()
+        switch (operationInput)
         {
-            return 100 * Position.Y + Position.X;
+            case 0:
+                return 0;
+            case 1:
+                return 1;
+            case 2:
+                return 2;
+            case 3:
+                return 3;
+            case 4:
+                return registers[0];
+            case 5:
+                return registers[1];
+            case 6:
+                return registers[2];
+            case 7:
+            default:
+                throw new ArgumentOutOfRangeException(nameof(operation), operation, null);
         }
-
-        public char GetChar(Vec2L checkPosition)
-        {
-            if(checkPosition.X == Position.X && checkPosition.Y == Position.Y)
-                return '[';
-            if(checkPosition.X == Position.X + 1 && checkPosition.Y == Position.Y)
-                return ']';
-            return ' ';
-        }
-
-        public Vec2L[] GetCheckPosition(Vec2L currentCheckPosition, Direction direction)
-        {
-            return direction switch
-            {
-                Direction.LEFT when currentCheckPosition.X + 1 == Position.X => [Position.Move(-2, 0)],
-                Direction.RIGHT when currentCheckPosition.X == Position.X => [Position.Move(2, 0)],
-                Direction.UP => [Position.Move(0, -1), Position.Move(1, -1)],
-                Direction.DOWN => [Position.Move(0, 1), Position.Move(1, 1)],
-                _ => [Position.Move(direction.ToVec2L())]
-            };
-        }
-
-        public bool InsideBoundingBox(Vec2L checkPosition)
-        {
-            return checkPosition.X >= Position.X &&
-                   checkPosition.X < Position.X + size.X &&
-                   checkPosition.Y >= Position.Y &&
-                   checkPosition.Y < Position.Y + size.Y;
-        }
-
-        public Vec2L Position { get; private set; } = position;
     }
+
+    private static void ParseInput(out BigInteger[] registers, out List<short> instructions, string[] input)
+    {
+        registers = new BigInteger[3];
+        var registerPattern = RegisterRegex();
+        foreach (var inputLine in input.TakeWhile(line => !string.IsNullOrEmpty(line)))
+        {
+            var match = registerPattern.Match(inputLine);
+            var register = match.Groups[1].Value;
+            var value = BigInteger.Parse(match.Groups[2].Value);
+            registers[register[0] - 'A'] = value;
+        }
+
+        instructions = [];
+        var instructionLine = input[^1];
+        var programPattern = ProgramRegex();
+        var m = programPattern.Match(instructionLine);
+        instructions.AddRange(m.Value.Split(',').Select(short.Parse));
+    }
+
+    private enum Operation
+    {
+        ADV = 0, // Divide value in register a by the square of the input. The result is stored in register a.
+        BXL = 1, // XOR the value in register b with the value of 1. The result is stored in register b.
+        BST = 2, // Take in the input mod 8 and store it in register b.
+        JNZ = 3, // if register a is not zero, jump to the instruction at the offset of the input.
+        BXC = 4, // XOR the value in register b with the value of register c. The result is stored in register b.
+        OUT = 5, // Take the input mod 8 and output it.
+        BDV = 6, // Divide value in register a by the square of the input. The result is stored in register b.
+        CDV = 7, // Divide value in register a by the square of the input. The result is stored in register c.
+    }
+
+
+    [GeneratedRegex(@"Register (\w): (\d+)")]
+    private static partial Regex RegisterRegex();
+    [GeneratedRegex(@"(\d\,?)+")]
+    private static partial Regex ProgramRegex();
 }

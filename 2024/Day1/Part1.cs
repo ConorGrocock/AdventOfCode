@@ -4,31 +4,31 @@ namespace Day1;
 
 public class Part1: ISolution
 {
-    public int Sample()
+    public string Sample()
     {
         return Custom("sample");
     }
 
-    public int Real()
+    public string Real()
     {
         return Custom("real");
     }
 
-    public int Custom(string fileName)
+    public string Custom(string fileName)
     {
         var fileInput = Input.TestInput(fileName);
         return Answer(fileInput);
     }
 
-    public int Answer(string[] fileContents)
+    public string Answer(string[] fileContents)
     {
         var result = 0;
         var leftColumn = new List<int>();
         var rightColumn = new List<int>();
 
-        for (var i = 0; i < fileContents.Length; i++)
+        foreach (var fileLine in fileContents)
         {
-            var lineParts = fileContents[i].Split(" ", StringSplitOptions.RemoveEmptyEntries);
+            var lineParts = fileLine.Split(" ", StringSplitOptions.RemoveEmptyEntries);
             var firstItem = int.Parse(lineParts[0]);
             var secondItem = int.Parse(lineParts[1]);
 
@@ -39,7 +39,7 @@ public class Part1: ISolution
         leftColumn.Sort();
         rightColumn.Sort();
 
-        for (int i = 0; i < leftColumn.Count; i++)
+        for (var i = 0; i < leftColumn.Count; i++)
         {
             var left = leftColumn[i];
             var right = rightColumn[i];
@@ -47,6 +47,6 @@ public class Part1: ISolution
             result += difference;
         }
 
-        return result;
+        return result.ToString();
     }
 }

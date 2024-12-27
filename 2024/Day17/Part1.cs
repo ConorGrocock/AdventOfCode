@@ -33,44 +33,49 @@ public partial class Part1 : ISolution
 
         var instructionPointer = 0;
         var output = new StringBuilder();
-        while (instructionPointer + 1 < instructions.Count)
+        while (instructionPointer < instructions.Count)
         {
             var instruction = (Operation) instructions[instructionPointer];
-            var literalOperand = instructions[instructionPointer];
-            var comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
+            var literalOperand = instructions[instructionPointer + 1];
+            BigInteger comboOperand = 0;
 
-            RenderExecutation(instruction, comboOperand, registers, instructionPointer, instructions, output);
-
+            RenderExecution(instruction, comboOperand, registers, instructionPointer, instructions, output);
 
             switch (instruction)
             {
                 case Operation.ADV:
-                    registers[0] /= (BigInteger)Math.Pow((double) comboOperand, 2);
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
+                    registers[0] /= (BigInteger)Math.Pow(2, (double) comboOperand);
                     break;
                 case Operation.BXL:
                     registers[1] ^= literalOperand;
                     break;
                 case Operation.BST:
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
                     registers[1] = comboOperand % 8;
                     break;
                 case Operation.JNZ:
                     if (registers[0] != 0)
                     {
-                        instructionPointer = literalOperand - 2;
+                        instructionPointer = literalOperand;
                         continue;
                     }
                     break;
                 case Operation.BXC:
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
                     registers[1] ^= registers[2];
                     break;
                 case Operation.OUT:
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
                     output = AddOutput(output, comboOperand % 8);
                     break;
                 case Operation.BDV:
-                    registers[1] = registers[0] / (BigInteger)Math.Pow((double) comboOperand, 2);
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
+                    registers[1] = registers[0] / (BigInteger)Math.Pow(2,(double) comboOperand);
                     break;
                 case Operation.CDV:
-                    registers[2] = registers[0] / (BigInteger)Math.Pow((double) comboOperand, 2);
+                    comboOperand = GetOperationInput(instruction, instructions, instructionPointer, registers);
+                    registers[2] = registers[0] / (BigInteger)Math.Pow(2,(double) comboOperand);
                     break;
                 default:
                     return output.ToString();
@@ -79,10 +84,12 @@ public partial class Part1 : ISolution
             instructionPointer += 2;
         }
 
+        RenderExecution(Operation.ADV, 0, registers, instructionPointer, instructions, output);
+
         return output.ToString();
     }
 
-    private void RenderExecutation(Operation instruction, BigInteger comboOperand, BigInteger[] registers, int instructionPointer, List<short> instructions, StringBuilder output)
+    private static void RenderExecution(Operation instruction, BigInteger comboOperand, BigInteger[] registers, int instructionPointer, List<short> instructions, StringBuilder output)
     {
         if(_renderMode == RenderMode.DISABLED)
             return;
@@ -100,11 +107,18 @@ public partial class Part1 : ISolution
         Console.WriteLine($"Instruction Pointer: {instructionPointer}");
         Console.WriteLine($"Instructions: {string.Join(',', instructions)}");
         Console.WriteLine($"Output: {output}");
-        Console.WriteLine("Press any key to continue...");
-        Console.ReadKey();
+
+        if (_renderMode == RenderMode.STEP_THROUGH)
+        {
+            Console.WriteLine("Press any key to continue...");
+            Console.ReadKey();
+        } else if (_renderMode == RenderMode.DELAY)
+        {
+            Thread.Sleep(500);
+        }
     }
 
-    private StringBuilder AddOutput(StringBuilder output, BigInteger value)
+    private static StringBuilder AddOutput(StringBuilder output, BigInteger value)
     {
         if(output.Length > 0)
             output.Append(',');

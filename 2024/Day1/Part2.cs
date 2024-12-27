@@ -4,23 +4,23 @@ namespace Day1;
 
 public class Part2: ISolution
 {
-    public int Sample()
+    public string Sample()
     {
         return Custom("sample");
     }
 
-    public int Real()
+    public string Real()
     {
         return Custom("real");
     }
 
-    public int Custom(string fileName)
+    public string Custom(string fileName)
     {
         var fileInput = Input.TestInput(fileName);
         return Answer(fileInput);
     }
 
-    public int Answer(string[] fileContents)
+    public string Answer(string[] fileContents)
     {
         var result = 0;
         var leftColumn = new List<int>();
@@ -47,7 +47,7 @@ public class Part2: ISolution
             }
         }
 
-        return result;
+        return result.ToString();
     }
 
 }
